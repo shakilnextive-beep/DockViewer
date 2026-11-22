@@ -12,5 +12,6 @@
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSAppleEventsUsageDescription</key><string>DockPeek reads your browser's tab list to show tab previews, and switches to the tab you click.</string>
 </dict>
 </plist>

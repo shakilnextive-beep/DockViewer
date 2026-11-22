@@ -10,7 +10,11 @@ Hover a Dock icon → see every window of that app (including minimized ones) as
 - **Mac traffic lights** on each preview: 🔴 close, 🟡 minimize, 🟢 zoom
 - **Minimized windows** are shown too, dimmed with a "Minimized" tag
 - **Click the icon of the app in front** → all its windows minimize; click again → they come back (Windows taskbar behaviour). Can be turned off in the menu.
-- Menu bar icon: permission status, the click option, launch at login, quit
+- **Browser tabs** (Chrome, Opera, Safari, Edge, Brave, Vivaldi, Arc): a **Windows | Tabs** switch in the popup shows every open tab. Click a tab to jump to it, 🔴 closes it, the active tab has a blue border.
+  - **Grid** or **one row like the Dock** layout
+  - **📷 Capture** takes a picture of every tab (switches through them, then returns to the tab you were on). Tabs you open while browsing are pictured automatically.
+- **Hover speed**: fast (0.2 s), medium (0.4 s, default) or slow (0.7 s)
+- Menu bar icon: permission status, click option, hover speed, launch at login, quit
 
 ## Requirements
 
@@ -40,6 +44,8 @@ DockPeek needs two permissions. Give them once:
 
 The menu bar icon shows ✓ / ✗ for each permission.
 
+For browser tabs, macOS asks once per browser: *"DockPeek wants to control Opera"* → **Allow**. If you denied it: **Privacy & Security → Automation → DockPeek** → switch the browser on.
+
 The app is signed with a requirement pinned to its bundle id (`local.dockpeek.app`), so rebuilding does **not** reset these permissions. If a permission ever shows ✗ while its switch is on, select DockPeek in the list, press **−**, then add it again with **+**.
 
 ## Troubleshooting
@@ -57,6 +63,7 @@ Log file: `~/Library/Logs/DockPeek.log` (cleared on every launch).
 
 - macOS can't capture a window that was already minimized before DockPeek started; such windows show the app icon until they are opened once.
 - Windows on other Spaces are not listed.
+- Browsers only draw the tab in front, so background tabs have no picture until they've been shown once (or you press **Capture**). Tab pictures are kept in memory only, until DockPeek quits. Firefox has no scripting support for tabs.
 - Uses the private `_AXUIElementGetWindow` API to map Accessibility windows to window IDs (long-stable, used by many window managers).
 
 ## Project layout
@@ -68,6 +75,7 @@ Log file: `~/Library/Logs/DockPeek.log` (cleared on every launch).
 | `Sources/DockPeek/DockClickHandler.swift` | Click-to-minimize / restore on Dock icons |
 | `Sources/DockPeek/WindowManager.swift` | Lists windows, captures thumbnails, focus / minimize / close / zoom |
 | `Sources/DockPeek/PreviewPanel.swift` | The popup's design (SwiftUI) and placement |
+| `Sources/DockPeek/BrowserTabs.swift` | Reads, switches, closes and pictures browser tabs (AppleScript) |
 | `Sources/DockPeek/AX.swift` | Accessibility helpers |
 | `Sources/DockPeek/Log.swift` | Log file |
 | `Resources/Info.plist` | App bundle info (menu bar only app) |

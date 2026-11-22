@@ -7,6 +7,7 @@ struct WindowInfo: Identifiable {
     let element: AXUIElement
     let title: String
     let minimized: Bool
+    let origin: CGPoint       // top-left, Accessibility coordinates
     var image: CGImage?
 }
 
@@ -39,6 +40,7 @@ final class WindowManager {
                               element: w,
                               title: title.isEmpty ? (app.localizedName ?? "Window") : title,
                               minimized: w.bool(kAXMinimizedAttribute) ?? false,
+                              origin: w.position ?? .zero,
                               image: cache[id])
         }
     }
@@ -82,7 +84,10 @@ final class WindowManager {
         guard let app = NSWorkspace.shared.frontmostApplication,
               app.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
         let list = windows(for: app)
-        Task { _ = await refreshThumbnails(list) }
+        Task { @MainActor in
+            let images = await refreshThumbnails(list)
+            BrowserTabs.shared.warmCache(for: app, windows: list, images: images)
+        }
     }
 
     func focus(_ window: WindowInfo, in app: NSRunningApplication) {
@@ -90,6 +95,26 @@ final class WindowManager {
         app.activate()
         window.element.perform(kAXRaiseAction)
         window.element.set(kAXMainAttribute, true)
+    }
+
+    /// Captures one window right now (it may be behind other windows).
+    func captureWindow(_ id: CGWindowID) async -> CGImage? {
+        guard CGPreflightScreenCaptureAccess(),
+              let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false),
+              let scWindow = content.windows.first(where: { $0.windowID == id }) else { return nil }
+        let frame = scWindow.frame
+        guard frame.width > 1, frame.height > 1 else { return nil }
+        let scale = min(1, maxThumb / max(frame.width, frame.height)) * 2
+        let config = SCStreamConfiguration()
+        config.width = Int(frame.width * scale)
+        config.height = Int(frame.height * scale)
+        config.showsCursor = false
+        config.ignoreShadowsSingleWindow = true
+        guard let image = try? await SCScreenshotManager.captureImage(
+            contentFilter: SCContentFilter(desktopIndependentWindow: scWindow), configuration: config),
+              !Self.isBlank(image) else { return nil }
+        cache[id] = image
+        return image
     }
 
     /// A minimized window sometimes captures as a fully transparent image.

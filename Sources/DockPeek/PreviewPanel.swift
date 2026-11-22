@@ -5,12 +5,36 @@ import SwiftUI
 
 enum TileButton { case close, minimize, zoom }
 
+enum PreviewMode: String { case windows, tabs }
+enum TabLayout: String { case grid, row }
+
 final class PreviewModel: ObservableObject {
     @Published var appName = ""
     @Published var icon = NSImage()
     @Published var windows: [WindowInfo] = []
     @Published var hovered: CGWindowID?
     @Published var hoveredButton: TileButton?
+
+    // Browser tabs
+    @Published var isBrowser = false
+    @Published var mode: PreviewMode = .windows
+    @Published var tabs: [TabInfo] = []
+    @Published var tabsLoading = false
+    @Published var hoveredTab: Int?
+    @Published var hoveredTabClose = false
+    var tabFrames: [Int: CGRect] = [:]
+    var tabCloseFrames: [Int: CGRect] = [:]
+    var onSelectTab: (TabInfo) -> Void = { _ in }
+    var onCloseTab: (TabInfo) -> Void = { _ in }
+    var onSetMode: (PreviewMode) -> Void = { _ in }
+    @Published var captureDone = 0
+    @Published var captureTotal = 0          // > 0 while "Capture" is running
+    var onCaptureAll: () -> Void = {}
+    @Published var tabLayout: TabLayout =
+        TabLayout(rawValue: UserDefaults.standard.string(forKey: "tabLayout") ?? "") ?? .grid
+    var maxRowWidth: CGFloat = 1400          // set from the screen size
+    var onSetLayout: (TabLayout) -> Void = { _ in }
+
     /// Tile and button rects in the panel's top-left coordinate space.
     /// Hover is computed from the mouse position because SwiftUI's onHover
     /// doesn't fire in a panel that belongs to an inactive app.
@@ -32,6 +56,15 @@ final class PreviewModel: ObservableObject {
         }
         if hovered != tile { hovered = tile }
         if hoveredButton != button { hoveredButton = button }
+
+        var tab: Int?
+        var tabClose = false
+        if let point, mode == .tabs {
+            tab = tabFrames.first { $0.value.contains(point) }?.key
+            if let tab { tabClose = tabCloseFrames[tab]?.contains(point) ?? false }
+        }
+        if hoveredTab != tab { hoveredTab = tab }
+        if hoveredTabClose != tabClose { hoveredTabClose = tabClose }
     }
 }
 
@@ -74,9 +107,16 @@ struct PreviewView: View {
     }
 
     var body: some View {
-        LazyVGrid(columns: columns, spacing: 4) {
-            ForEach(model.windows) { w in
-                WindowTile(model: model, window: w, icon: model.icon, width: tileWidth)
+        VStack(alignment: .leading, spacing: 6) {
+            if model.isBrowser { browserHeader }
+            if model.isBrowser && model.mode == .tabs {
+                TabsGrid(model: model)
+            } else {
+                LazyVGrid(columns: columns, spacing: 4) {
+                    ForEach(model.windows) { w in
+                        WindowTile(model: model, window: w, icon: model.icon, width: tileWidth)
+                    }
+                }
             }
         }
         .padding(6)
@@ -85,9 +125,14 @@ struct PreviewView: View {
         .onPreferenceChange(FrameKey.self) { frames in
             var tiles: [CGWindowID: CGRect] = [:]
             var buttons: [CGWindowID: [TileButton: CGRect]] = [:]
+            var tabs: [Int: CGRect] = [:]
+            var tabCloses: [Int: CGRect] = [:]
             for (key, rect) in frames {
                 let parts = key.split(separator: ":")
-                guard parts.count == 2, let id = CGWindowID(parts[1]) else { continue }
+                guard parts.count == 2 else { continue }
+                if let n = Int(parts[1]), parts[0] == "tab" { tabs[n] = rect; continue }
+                if let n = Int(parts[1]), parts[0] == "tabx" { tabCloses[n] = rect; continue }
+                guard let id = CGWindowID(parts[1]) else { continue }
                 switch parts[0] {
                 case "tile": tiles[id] = rect
                 case "close": buttons[id, default: [:]][.close] = rect
@@ -98,7 +143,235 @@ struct PreviewView: View {
             }
             model.tileFrames = tiles
             model.buttonFrames = buttons
+            model.tabFrames = tabs
+            model.tabCloseFrames = tabCloses
         }
+    }
+
+    /// App name + a "Windows | Tabs" switch, only for browsers.
+    private var browserHeader: some View {
+        HStack(spacing: 8) {
+            Image(nsImage: model.icon).resizable().frame(width: 16, height: 16)
+            Text(model.appName).font(.system(size: 12, weight: .semibold)).foregroundStyle(Win11.text)
+            Spacer(minLength: 16)
+            if model.mode == .tabs && !model.tabs.isEmpty {
+                // Grid ⇄ one Dock-like row
+                HStack(spacing: 2) {
+                    layoutButton(.grid, "square.grid.2x2", "Grid")
+                    layoutButton(.row, "rectangle.split.3x1", "One row, like the Dock")
+                }
+                .padding(2)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.06)))
+
+                Button { model.onCaptureAll() } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "camera")
+                        Text(model.captureTotal > 0 ? "\(model.captureDone)/\(model.captureTotal)" : "Capture")
+                    }
+                    .font(.system(size: 11))
+                    .foregroundStyle(Win11.text)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.06)))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(model.captureTotal > 0)
+                .help("Take a picture of every tab")
+            }
+            HStack(spacing: 2) {
+                modeButton(.windows, "Windows", count: model.windows.count)
+                modeButton(.tabs, "Tabs", count: model.tabs.count)
+            }
+            .padding(2)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.06)))
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 4)
+    }
+
+    private func layoutButton(_ layout: TabLayout, _ symbol: String, _ help: String) -> some View {
+        let on = model.tabLayout == layout
+        return Button { model.onSetLayout(layout) } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 11))
+                .foregroundStyle(on ? Win11.text : Win11.subtext)
+                .frame(width: 26, height: 20)
+                .background(RoundedRectangle(cornerRadius: 5).fill(on ? Color.white.opacity(0.14) : .clear))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    private func modeButton(_ mode: PreviewMode, _ label: String, count: Int) -> some View {
+        let on = model.mode == mode
+        return Button { model.onSetMode(mode) } label: {
+            HStack(spacing: 4) {
+                Text(label)
+                if count > 0 && !(mode == .tabs && model.tabsLoading) {
+                    Text("\(count)").foregroundStyle(on ? Win11.text : Win11.subtext)
+                }
+            }
+            .font(.system(size: 11, weight: on ? .semibold : .regular))
+            .foregroundStyle(on ? Win11.text : Win11.subtext)
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .background(RoundedRectangle(cornerRadius: 5).fill(on ? Color.white.opacity(0.14) : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Browser tabs
+
+struct TabsGrid: View {
+    @ObservedObject var model: PreviewModel
+
+    static let cardWidth: CGFloat = 176
+    static let cardHeight: CGFloat = 146
+    private var columnCount: Int { min(max(model.tabs.count, 1), 5) }
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.fixed(Self.cardWidth), spacing: 4), count: columnCount)
+    }
+    private var windowNumbers: [Int] { Array(Set(model.tabs.map(\.windowNumber))).sorted() }
+
+    /// Height the grid needs; the panel scrolls beyond ~3.3 rows.
+    private var contentHeight: CGFloat {
+        var h: CGFloat = 0
+        for n in windowNumbers {
+            let count = model.tabs.filter { $0.windowNumber == n }.count
+            let rows = (count + columnCount - 1) / columnCount
+            h += CGFloat(rows) * (Self.cardHeight + 4) + (windowNumbers.count > 1 ? 24 : 0)
+        }
+        return h
+    }
+
+    var body: some View {
+        let width = CGFloat(columnCount) * (Self.cardWidth + 4) - 4
+        Group {
+            if model.tabsLoading && model.tabs.isEmpty {
+                Text("Loading tabs…").font(.system(size: 12)).foregroundStyle(Win11.subtext)
+                    .frame(width: 2 * Self.cardWidth, height: 60)
+            } else if model.tabs.isEmpty {
+                Text("Couldn't read tabs. Allow DockPeek to control \(model.appName) in System Settings → Privacy & Security → Automation.")
+                    .font(.system(size: 11)).foregroundStyle(Win11.subtext)
+                    .multilineTextAlignment(.center)
+                    .frame(width: 2 * Self.cardWidth + 40).padding(.vertical, 16)
+            } else if model.tabLayout == .row {
+                // Dock-like: every tab side by side in one row.
+                let total = CGFloat(model.tabs.count) * (Self.cardWidth + 4) - 4
+                ScrollView(.horizontal, showsIndicators: total > model.maxRowWidth) {
+                    HStack(spacing: 4) {
+                        ForEach(model.tabs) { tab in
+                            TabCard(model: model, tab: tab, icon: model.icon)
+                        }
+                    }
+                }
+                .frame(width: min(total, model.maxRowWidth), height: Self.cardHeight + (total > model.maxRowWidth ? 12 : 0))
+            } else {
+                ScrollView(.vertical, showsIndicators: contentHeight > 500) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(windowNumbers, id: \.self) { n in
+                            if windowNumbers.count > 1 {
+                                Text("Window \(n)")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(Win11.subtext)
+                                    .padding(.horizontal, 8).padding(.top, 4)
+                                    .frame(height: 20)
+                            }
+                            LazyVGrid(columns: columns, spacing: 4) {
+                                ForEach(model.tabs.filter { $0.windowNumber == n }) { tab in
+                                    TabCard(model: model, tab: tab, icon: model.icon)
+                                }
+                            }
+                        }
+                    }
+                }
+                .frame(width: width, height: min(contentHeight, 500))
+            }
+        }
+    }
+}
+
+struct TabCard: View {
+    @ObservedObject var model: PreviewModel
+    let tab: TabInfo
+    let icon: NSImage
+
+    private var hovering: Bool { model.hoveredTab == tab.id }
+    private var thumbWidth: CGFloat { TabsGrid.cardWidth - 12 }
+    private var thumbHeight: CGFloat { 92 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                TrafficLight(kind: .close, enabled: true, showGlyph: hovering,
+                             pressed: hovering && model.hoveredTabClose) {
+                    model.onCloseTab(tab)
+                }
+                .reportFrame("tabx:\(tab.id)")
+                Text(tab.title)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Win11.text)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+            }
+            .frame(height: 19)
+
+            thumbnail
+                .frame(width: thumbWidth, height: thumbHeight)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(tab.active ? Win11.accent : Color.white.opacity(0.06),
+                                      lineWidth: tab.active ? 1.5 : 1)
+                )
+
+            Text(tab.host)
+                .font(.system(size: 10))
+                .foregroundStyle(Win11.subtext)
+                .lineLimit(1)
+                .frame(width: thumbWidth, alignment: .leading)
+        }
+        .padding(6)
+        .frame(width: TabsGrid.cardWidth, height: TabsGrid.cardHeight)
+        .background(RoundedRectangle(cornerRadius: 6).fill(hovering ? Win11.tileHover : .clear))
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(hovering ? Win11.border : .clear, lineWidth: 1))
+        .reportFrame("tab:\(tab.id)")
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .contentShape(Rectangle())
+        .onTapGesture { model.onSelectTab(tab) }
+    }
+
+    @ViewBuilder private var thumbnail: some View {
+        if let image = tab.image {
+            Image(decorative: image, scale: 1)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: thumbWidth, height: thumbHeight, alignment: .top)
+        } else {
+            // No picture yet: a calm card colored from the site's name.
+            ZStack {
+                Rectangle().fill(Self.color(for: tab.host).opacity(0.35))
+                VStack(spacing: 4) {
+                    Text(String(tab.host.prefix(1)).uppercased())
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundStyle(Win11.text)
+                    Text(tab.host)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Win11.subtext)
+                        .lineLimit(1)
+                        .padding(.horizontal, 8)
+                }
+            }
+        }
+    }
+
+    private static func color(for host: String) -> Color {
+        let palette: [Color] = [.blue, .purple, .pink, .orange, .teal, .indigo, .green, .red]
+        let sum = host.unicodeScalars.reduce(0) { $0 + Int($1.value) }
+        return palette[sum % palette.count]
     }
 }
 
@@ -308,6 +581,48 @@ final class PreviewController {
             WindowManager.shared.minimize(w)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self?.reload() }
         }
+        model.onSetMode = { [weak self] mode in
+            guard let self else { return }
+            UserDefaults.standard.set(mode.rawValue, forKey: "previewMode")
+            model.mode = mode
+            model.updateHover(at: nil)
+            if mode == .tabs { loadTabs() }
+            layoutAndShow()
+        }
+        model.onSetLayout = { [weak self] layout in
+            guard let self else { return }
+            UserDefaults.standard.set(layout.rawValue, forKey: "tabLayout")
+            model.tabLayout = layout
+            model.updateHover(at: nil)
+            layoutAndShow()
+        }
+        model.onCaptureAll = { [weak self] in
+            guard let self, let app = currentApp, model.captureTotal == 0 else { return }
+            let tabs = model.tabs
+            model.captureDone = 0
+            model.captureTotal = tabs.count
+            Task { @MainActor [weak self] in
+                await BrowserTabs.shared.captureAll(app: app, tabs: tabs) { [weak self] done, total, tab, image in
+                    guard let model = self?.model else { return }
+                    model.captureDone = done
+                    model.captureTotal = total
+                    if let image, let i = model.tabs.firstIndex(where: { $0.key == tab.key }) {
+                        model.tabs[i].image = image
+                    }
+                }
+                self?.model.captureTotal = 0
+                self?.model.captureDone = 0
+            }
+        }
+        model.onSelectTab = { [weak self] tab in
+            guard let self, let app = currentApp else { return }
+            BrowserTabs.shared.select(tab, in: app)
+            hide()
+        }
+        model.onCloseTab = { [weak self] tab in
+            guard let self, let app = currentApp else { return }
+            BrowserTabs.shared.close(tab, in: app) { [weak self] in self?.loadTabs() }
+        }
         model.onZoom = { [weak self] w in
             guard let self, let app = currentApp else { return }
             WindowManager.shared.zoom(w, in: app)
@@ -320,14 +635,39 @@ final class PreviewController {
     }
 
     func show(app: NSRunningApplication, at item: DockItem) {
+        let sameApp = currentApp?.processIdentifier == app.processIdentifier
         currentApp = app
         itemFrame = item.frame
         model.appName = app.localizedName ?? item.title
         model.icon = app.icon ?? NSImage()
         model.windows = WindowManager.shared.windows(for: app)
         guard !model.windows.isEmpty else { hide(); return }
+
+        model.isBrowser = BrowserTabs.shared.kind(of: app) != nil
+        if model.isBrowser {
+            let saved = UserDefaults.standard.string(forKey: "previewMode") ?? ""
+            model.mode = PreviewMode(rawValue: saved) ?? .windows
+            if !sameApp { model.tabs = [] }
+            loadTabs()
+        } else {
+            model.mode = .windows
+            model.tabs = []
+        }
         layoutAndShow()
         refreshImages()
+    }
+
+    private func loadTabs() {
+        guard let app = currentApp, model.isBrowser else { return }
+        let pid = app.processIdentifier
+        model.tabsLoading = true
+        BrowserTabs.shared.loadTabs(for: app) { [weak self] tabs in
+            guard let self, currentApp?.processIdentifier == pid else { return }
+            model.tabsLoading = false
+            model.tabs = tabs
+            Log.write("tabs: \(tabs.count) in \(app.localizedName ?? "?")")
+            if panel.isVisible { layoutAndShow() }
+        }
     }
 
     /// Called on a timer with the global mouse position.
@@ -362,10 +702,23 @@ final class PreviewController {
                 if let img = fresh[w.id] { w.image = img }
                 return w
             }
+            // Give each window's active tab the fresh picture too.
+            if model.isBrowser, !model.tabs.isEmpty {
+                BrowserTabs.shared.remember(windowImages: fresh, windows: model.windows, tabs: model.tabs)
+                model.tabs = model.tabs.map { t in
+                    var t = t
+                    if t.active, let w = model.windows.first(where: {
+                        abs($0.origin.x - t.windowOrigin.x) < 3 && abs($0.origin.y - t.windowOrigin.y) < 3
+                    }), let img = fresh[w.id] { t.image = img }
+                    return t
+                }
+            }
         }
     }
 
     private func layoutAndShow() {
+        let screenForItem = NSScreen.screens.first { $0.frame.intersects(itemFrame) } ?? NSScreen.main
+        model.maxRowWidth = max(400, (screenForItem?.visibleFrame.width ?? 1400) - 60)
         hosting.layoutSubtreeIfNeeded()
         let size = hosting.fittingSize
         let screen = NSScreen.screens.first { $0.frame.intersects(itemFrame) } ?? NSScreen.main!
