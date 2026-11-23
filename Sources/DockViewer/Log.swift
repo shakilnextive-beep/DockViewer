@@ -1,9 +1,9 @@
 import Foundation
 
-/// Tiny file logger: ~/Library/Logs/DockPeek.log
+/// Tiny file logger: ~/Library/Logs/DockViewer.log
 enum Log {
     private static let url = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Logs/DockPeek.log")
+        .appendingPathComponent("Library/Logs/DockViewer.log")
     private static let formatter: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "HH:mm:ss.SSS"; return f
     }()

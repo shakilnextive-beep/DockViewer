@@ -253,7 +253,7 @@ struct TabsGrid: View {
                 Text("Loading tabs…").font(.system(size: 12)).foregroundStyle(Win11.subtext)
                     .frame(width: 2 * Self.cardWidth, height: 60)
             } else if model.tabs.isEmpty {
-                Text("Couldn't read tabs. Allow DockPeek to control \(model.appName) in System Settings → Privacy & Security → Automation.")
+                Text("Couldn't read tabs. Allow Dock Viewer to control \(model.appName) in System Settings → Privacy & Security → Automation.")
                     .font(.system(size: 11)).foregroundStyle(Win11.subtext)
                     .multilineTextAlignment(.center)
                     .frame(width: 2 * Self.cardWidth + 40).padding(.vertical, 16)

@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.write("launch: AX=\(AXIsProcessTrusted()) ScreenRecording=\(CGPreflightScreenCaptureAccess())")
         setupMenuBar()
         requestPermissions()
+        enableLoginItemByDefault()
+        Updater.shared.start()
 
         watcher.onHover = { [weak self] item in self?.dockHoverChanged(item) }
         watcher.start()
@@ -41,7 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// How long the mouse must rest on a Dock icon before the popup opens.
     static let delayChoices: [(title: String, seconds: Double)] = [
-        ("দ্রুত (0.2 সেকেন্ড)", 0.2), ("মাঝারি (0.4 সেকেন্ড)", 0.4), ("ধীরে (0.7 সেকেন্ড)", 0.7),
+        ("Fast (0.2 s)", 0.2), ("Normal (0.4 s)", 0.4), ("Relaxed (0.7 s)", 0.7),
     ]
     static var hoverDelay: Double {
         get { UserDefaults.standard.object(forKey: "hoverDelay") as? Double ?? 0.4 }
@@ -52,9 +54,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pendingShow?.cancel()
         guard let item else { return }   // mouse left an icon; the hover timer decides when to hide
         guard let app = WindowManager.shared.runningApp(for: item.appURL) else {
-            Log.write("hover: no running app for \(item.title)"); return
+            return
         }
-        Log.write("hover: \(app.localizedName ?? "?") windows=\(WindowManager.shared.windows(for: app).count)")
         if preview.isVisible {
             preview.show(app: app, at: item)          // already open: switch instantly
         } else {
@@ -97,22 +98,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupMenuBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "rectangle.on.rectangle", accessibilityDescription: "DockPeek")
+        statusItem.button?.image = NSImage(systemSymbolName: "rectangle.on.rectangle", accessibilityDescription: AppInfo.name)
         rebuildMenu()
     }
 
     private func rebuildMenu() {
         let menu = NSMenu()
         let ax = AXIsProcessTrusted(), sc = CGPreflightScreenCaptureAccess()
-        menu.addItem(withTitle: "DockPeek চালু আছে", action: nil, keyEquivalent: "")
-        menu.addItem(withTitle: "Accessibility: \(ax ? "✓" : "✗ দরকার")", action: #selector(openAXSettings), keyEquivalent: "")
-        menu.addItem(withTitle: "Screen Recording: \(sc ? "✓" : "✗ দরকার")", action: #selector(openSCSettings), keyEquivalent: "")
+        let header = NSMenuItem(title: "\(AppInfo.name) \(AppInfo.version)", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+        menu.addItem(withTitle: "Accessibility: \(ax ? "✓ Allowed" : "✗ Needed — click to fix")", action: #selector(openAXSettings), keyEquivalent: "")
+        menu.addItem(withTitle: "Screen Recording: \(sc ? "✓ Allowed" : "✗ Needed — click to fix")", action: #selector(openSCSettings), keyEquivalent: "")
         menu.addItem(.separator())
-        let clickItem = NSMenuItem(title: "Icon চাপলে minimize / restore", action: #selector(toggleClick), keyEquivalent: "")
+        let clickItem = NSMenuItem(title: "Click Dock Icon to Minimize / Restore", action: #selector(toggleClick), keyEquivalent: "")
         clickItem.state = DockClickHandler.isEnabled ? .on : .off
         menu.addItem(clickItem)
 
-        let speed = NSMenuItem(title: "Preview দেখানোর গতি", action: nil, keyEquivalent: "")
+        let speed = NSMenuItem(title: "Preview Speed", action: nil, keyEquivalent: "")
         let speedMenu = NSMenu()
         for (i, choice) in Self.delayChoices.enumerated() {
             let item = NSMenuItem(title: choice.title, action: #selector(setDelay(_:)), keyEquivalent: "")
@@ -123,11 +126,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         speed.submenu = speedMenu
         menu.addItem(speed)
-        let login = NSMenuItem(title: "Mac চালু হলে চালু হবে", action: #selector(toggleLogin), keyEquivalent: "")
+        let login = NSMenuItem(title: "Open at Login", action: #selector(toggleLogin), keyEquivalent: "")
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)
+        let auto = NSMenuItem(title: "Install Updates Automatically", action: #selector(toggleAutoUpdate), keyEquivalent: "")
+        auto.state = Updater.autoInstall ? .on : .off
+        menu.addItem(auto)
+        menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "বন্ধ করুন", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(withTitle: "Share \(AppInfo.name)…", action: #selector(share), keyEquivalent: "")
+        menu.addItem(withTitle: "Visit SupportKori", action: #selector(openWebsite), keyEquivalent: "")
+        menu.addItem(withTitle: "About \(AppInfo.name)", action: #selector(showAbout), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Quit \(AppInfo.name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.items.forEach { if $0.action != #selector(NSApplication.terminate(_:)) { $0.target = self } }
         menu.delegate = self
         statusItem.menu = menu
@@ -141,6 +152,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
     }
 
+    @objc private func toggleAutoUpdate() { Updater.autoInstall.toggle() }
+
+    @objc private func checkForUpdates() { Updater.shared.check(userInitiated: true) }
+
+    @objc private func openWebsite() { NSWorkspace.shared.open(AppInfo.websiteURL) }
+
+    @objc private func share() {
+        DispatchQueue.main.async { [weak self] in
+            guard let button = self?.statusItem.button else { return }
+            let text = "\(AppInfo.name) — free Windows-style window and tab previews for the Mac Dock"
+            NSSharingServicePicker(items: [text, AppInfo.shareURL])
+                .show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        }
+    }
+
+    @objc private func showAbout() {
+        let credits = NSMutableAttributedString()
+        let body: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor]
+        func link(_ title: String, _ url: URL) -> NSAttributedString {
+            NSAttributedString(string: title, attributes: [.link: url, .font: NSFont.systemFont(ofSize: 11)])
+        }
+        credits.append(NSAttributedString(string: "Windows-style window and browser-tab previews for the macOS Dock.\n\nMade by ", attributes: body))
+        credits.append(link(AppInfo.creditName, AppInfo.creditURL))
+        credits.append(NSAttributedString(string: "\nGet it free on ", attributes: body))
+        credits.append(link("SupportKori", AppInfo.shareURL))
+        credits.append(NSAttributedString(string: " · Source on ", attributes: body))
+        credits.append(link("GitHub", AppInfo.githubURL))
+        credits.append(NSAttributedString(string: "\n\nFree to use and share. Not for sale.", attributes: body))
+        credits.setAlignment(.center, range: NSRange(location: 0, length: credits.length))
+
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationName: AppInfo.name,
+            .applicationVersion: AppInfo.version,
+            .version: "",
+            .credits: credits,
+        ])
+    }
+
     @objc private func setDelay(_ sender: NSMenuItem) {
         Self.hoverDelay = Self.delayChoices[sender.tag].seconds
     }
@@ -150,10 +200,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleLogin() {
+        UserDefaults.standard.set(true, forKey: "loginChoiceMade")
         do {
             if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() }
             else { try SMAppService.mainApp.register() }
-        } catch { NSLog("DockPeek login item error: \(error)") }
+        } catch { Log.write("login item error: \(error.localizedDescription)") }
+        Log.write("login item status: \(Self.loginStatusText)")
+    }
+
+    /// Turn "start at login" on by default the first time Dock Viewer runs,
+    /// unless the user has already switched it off from the menu.
+    private func enableLoginItemByDefault() {
+        if !UserDefaults.standard.bool(forKey: "loginChoiceMade"), SMAppService.mainApp.status != .enabled {
+            do { try SMAppService.mainApp.register() }
+            catch { Log.write("login item error: \(error.localizedDescription)") }
+        }
+        Log.write("login item status: \(Self.loginStatusText)")
+        if SMAppService.mainApp.status == .requiresApproval {
+            SMAppService.openSystemSettingsLoginItems()
+        }
+    }
+
+    private static var loginStatusText: String {
+        switch SMAppService.mainApp.status {
+        case .enabled: return "enabled"
+        case .requiresApproval: return "needs approval in System Settings → General → Login Items"
+        case .notRegistered: return "not registered"
+        case .notFound: return "not found"
+        @unknown default: return "unknown"
+        }
     }
 }
 

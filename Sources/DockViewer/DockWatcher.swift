@@ -82,7 +82,6 @@ final class DockWatcher {
         else { current = nil; onHover?(nil); return }
 
         let url = item.raw(kAXURLAttribute) as? URL
-        Log.write("hover: \(item.string(kAXTitleAttribute) ?? "?") url=\(url?.path ?? "nil")")
         let dockItem = DockItem(title: item.string(kAXTitleAttribute) ?? "",
                                 appURL: url,
                                 frame: cocoaRect(fromAX: pos, size: size))

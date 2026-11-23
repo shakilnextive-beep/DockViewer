@@ -35,7 +35,7 @@ final class BrowserTabs {
 
     /// Last seen picture of every tab, so background tabs keep an image.
     private var imageCache: [String: CGImage] = [:]
-    private let queue = DispatchQueue(label: "dockpeek.applescript")
+    private let queue = DispatchQueue(label: "dockviewer.applescript")
     private static let US = "\u{1F}", RS = "\u{1E}"
 
     func kind(of app: NSRunningApplication) -> Kind? {

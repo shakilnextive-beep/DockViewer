@@ -2,9 +2,9 @@
 import PackageDescription
 
 let package = Package(
-    name: "DockPeek",
+    name: "DockViewer",
     platforms: [.macOS(.v14)],
     targets: [
-        .executableTarget(name: "DockPeek", path: "Sources/DockPeek")
+        .executableTarget(name: "DockViewer", path: "Sources/DockViewer")
     ]
 )
