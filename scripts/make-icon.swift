@@ -37,7 +37,7 @@ rgb(255, 255, 255, 0.9).setFill()
 NSBezierPath(ovalIn: NSRect(x: 428, y: 178, width: 12, height: 12)).fill()
 
 // Preview popup with two window thumbnails, rising from the blue icon
-let popup = NSRect(x: 170, y: 350, width: 684, height: 470)
+let popup = NSRect(x: 170, y: 350, width: 684, height: 450)
 let shadow = NSShadow(); shadow.shadowBlurRadius = 40; shadow.shadowOffset = NSSize(width: 0, height: -12)
 shadow.shadowColor = rgb(0, 0, 0, 0.5)
 NSGraphicsContext.saveGraphicsState(); shadow.set()
@@ -54,11 +54,11 @@ for i in 0..<2 {
     let x = 205 + CGFloat(i) * 315
     // title bar: traffic lights
     for (j, c) in [rgb(255, 95, 87), rgb(254, 188, 46), rgb(40, 200, 64)].enumerated() {
-        c.setFill(); NSBezierPath(ovalIn: NSRect(x: x + CGFloat(j) * 34, y: 745, width: 24, height: 24)).fill()
+        c.setFill(); NSBezierPath(ovalIn: NSRect(x: x + CGFloat(j) * 34, y: 735, width: 24, height: 24)).fill()
     }
-    rgb(255, 255, 255, 0.55).setFill(); rounded(NSRect(x: x + 112, y: 750, width: 150, height: 14), 7).fill()
+    rgb(255, 255, 255, 0.55).setFill(); rounded(NSRect(x: x + 112, y: 740, width: 150, height: 14), 7).fill()
     // window thumbnail
-    let thumb = NSRect(x: x, y: 395, width: 300, height: 325)
+    let thumb = NSRect(x: x, y: 395, width: 300, height: 315)
     NSGradient(colors: [i == 0 ? rgb(77, 150, 255) : rgb(160, 110, 255),
                         i == 0 ? rgb(40, 90, 200) : rgb(100, 60, 200)])!.draw(in: rounded(thumb, 18), angle: -90)
     rgb(255, 255, 255, 0.85).setFill()
@@ -68,7 +68,16 @@ for i in 0..<2 {
 }
 // Hover ring around the first thumbnail
 rgb(77, 176, 255).setStroke()
-let ring = rounded(NSRect(x: 197, y: 387, width: 316, height: 341), 24); ring.lineWidth = 6; ring.stroke()
+let ring = rounded(NSRect(x: 197, y: 387, width: 316, height: 331), 24); ring.lineWidth = 6; ring.stroke()
+
+// App name across the top
+let title = NSAttributedString(string: "Dock Viewer", attributes: [
+    .font: NSFont.systemFont(ofSize: 66, weight: .heavy),
+    .foregroundColor: NSColor.white,
+    .kern: -0.5,
+])
+let tsize = title.size()
+title.draw(at: NSPoint(x: (size - tsize.width) / 2, y: 832))
 
 NSGraphicsContext.restoreGraphicsState()
 try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: out))
