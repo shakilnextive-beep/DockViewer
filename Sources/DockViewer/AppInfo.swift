@@ -21,7 +21,7 @@ enum AppInfo {
     // Links shown in the app
     static let websiteURL = URL(string: "https://www.supportkori.com")!
     /// What "Share Dock Viewer…" sends. Point this at the product page once it exists.
-    static let shareURL = URL(string: "https://mdshakil463.supportkori.shop")!
+    static let shareURL = URL(string: "https://www.supportkori.com/mdshakil463/extras/dock-viewer-free-window-tab-previews-for-mac-rjrh")!
     static let creditName = "Creative Assistant"
     static let creditURL = URL(string: "https://www.facebook.com/profile.php?id=61596330257511")!
 }

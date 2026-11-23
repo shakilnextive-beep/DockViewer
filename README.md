@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://github.com/shakilnextive-beep/DockViewer/releases/latest/download/DockViewer.zip"><b>⬇ Download for Mac (free)</b></a>
   &nbsp;·&nbsp;
-  <a href="https://mdshakil463.supportkori.shop">SupportKori</a>
+  <a href="https://www.supportkori.com/mdshakil463/extras/dock-viewer-free-window-tab-previews-for-mac-rjrh">SupportKori</a>
   &nbsp;·&nbsp;
   <a href="#installation">Install guide</a>
   &nbsp;·&nbsp;
@@ -78,7 +78,7 @@ Click the icon of the app you're using and all its windows minimize. Click again
 > Dock Viewer is free and not sold through the App Store, so macOS asks you to confirm it once. This takes about a minute.
 
 ### 1. Download
-Download **[DockViewer.zip](https://github.com/shakilnextive-beep/DockViewer/releases/latest/download/DockViewer.zip)** (or get it from **[SupportKori](https://mdshakil463.supportkori.shop)**) and double-click it. You'll get **Dock Viewer.app**.
+Download **[DockViewer.zip](https://github.com/shakilnextive-beep/DockViewer/releases/latest/download/DockViewer.zip)** (or get it from **[SupportKori](https://www.supportkori.com/mdshakil463/extras/dock-viewer-free-window-tab-previews-for-mac-rjrh)**) and double-click it. You'll get **Dock Viewer.app**.
 
 ### 2. Move it to Applications
 Drag **Dock Viewer** into your **Applications** folder.
@@ -201,7 +201,7 @@ Log file for troubleshooting: `~/Library/Logs/DockViewer.log`
 ## Credits
 
 Made by **[Creative Assistant](https://www.facebook.com/profile.php?id=61596330257511)**.
-Get Dock Viewer and more free tools on **[SupportKori](https://mdshakil463.supportkori.shop)**.
+Get Dock Viewer and more free tools on **[SupportKori](https://www.supportkori.com/mdshakil463/extras/dock-viewer-free-window-tab-previews-for-mac-rjrh)**.
 
 ## License
 
